@@ -14,12 +14,9 @@ import java.util.Scanner;
 import com.google.gson.Gson;
 
 /**
- * ====================================
- *     Kazumi Netease Lyrics Helper    
- *               v0.2.1                
- * ====================================
- *         yuki_ryoko@kotori.moe       
- * ====================================
+ * Kazumi Netease Lyrics Helper v0.3.0
+ * 
+ * yuki_ryoko@kotori.moe
  */
 
 public class GetNeteaseLrc {
@@ -67,21 +64,55 @@ public class GetNeteaseLrc {
 		System.out.println("中文歌词长度: " + mChineseLrcData.size());
 		System.out.println("=============================");
 
-		for (int i = 0; i < mLrcData.size(); i++) {
-			try {
-				finalLrc += mLrcData.get(i) + " / " + mChineseLrcData.get(i) + "\r\n";
-			} catch (Exception e) {
+		// for (int i = 0; i < mLrcData.size(); i++) {
+		// try {
+		// finalLrc += mLrcData.get(i) + " / " + mChineseLrcData.get(i) +
+		// "\r\n";
+		// } catch (Exception e) {
+		// finalLrc += mLrcData.get(i) + "\r\n";
+		// }
+		// }
+
+		// 没有中文歌词 (翻译歌词)
+		if (null == mChineseLrcData || 0 >= mChineseLrcData.size()) {
+			for (int i = 0; i < mLrcData.size(); i++) {
 				finalLrc += mLrcData.get(i) + "\r\n";
 			}
+		} else {
+			for (int i = 0; i < mLrcData.size(); i++) {
+
+				boolean isFind = false;
+
+				for (int j = 0; j < mChineseLrcData.size(); j++) {
+
+					// 对比时间戳
+					if (mLrcData.get(i).substring(0, mLrcData.get(i).indexOf("]") + 1)
+							.equals(mChineseLrcData.get(j).substring(0, mLrcData.get(j).indexOf("]") + 1))
+							&& !mLrcData.get(i).trim().equals("")) {
+
+						System.out.print(mLrcData.get(i) + " / "
+								+ mChineseLrcData.get(j).replace(
+										mChineseLrcData.get(j).substring(0, mChineseLrcData.get(j).indexOf("]") + 1),
+										"")
+								+ "\r\n");
+
+						isFind = true;
+					}
+				}
+
+				if (!isFind) {
+					System.out.print(mLrcData.get(i) + "\r\n");
+				}
+			}
 		}
-		
+
 		try {
 			saveLrcFile(finalLrc);
 		} catch (FileNotFoundException e) {
 			System.out.println("输出文件失败: " + e);
 		}
 	}
-	
+
 	public static String finalLrc = "";
 
 	// 获取原歌词
@@ -125,21 +156,24 @@ public class GetNeteaseLrc {
 		while ((line = reader.readLine()) != null) {
 			sb.append(line + "\r\n");
 
-			// TODO: 丢弃空歌词
-			String[] strarray = new String[0];
-			strarray = line.split("]");
+			// 分隔时间戳与正文内容
+			String[] temp = line.split("]");
 
-			try {
-				if (null != strarray[1] && !strarray[1].equals("")) {
-					if (mData == mLrcData) {
-						mData.add(line);
-					} else {
-						mData.add(strarray[1]);
-					}
-				}
-			} catch (Exception e) {
-				System.out.println("丢弃: " + line);
+			// 处理空字符串时间戳
+			if (1 == temp.length && !line.trim().equals("")) {
+				temp = new String[] { temp[0], " " };
 			}
+
+			// 将处理完的正文加入到数组
+			for (int j = 0; j < temp.length - 1; j++) {
+
+				if (temp[j].length() >= 0) {
+					mData.add(temp[j] + "]" + temp[temp.length - 1]);
+				}
+
+			}
+
+			// mData.add(line);
 		}
 		reader.close();
 		return sb.toString();
@@ -158,7 +192,6 @@ public class GetNeteaseLrc {
 
 			String str = null;
 			while ((str = localBufferedReader.readLine()) != null) {
-				StringBuffer localStringBuffer = new StringBuffer();
 				cutChineseHead(str);
 			}
 			localBufferedReader.close();
@@ -188,7 +221,7 @@ public class GetNeteaseLrc {
 	}
 
 	// 保存最终文件
-	public static void saveLrcFile(String data) throws FileNotFoundException{
+	public static void saveLrcFile(String data) throws FileNotFoundException {
 		FileOutputStream fs = new FileOutputStream(new File("C:" + File.separator + ".lrc"));
 		PrintStream p = new PrintStream(fs);
 		p.println(data);
