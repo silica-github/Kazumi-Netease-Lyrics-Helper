@@ -1,231 +1,224 @@
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.PrintStream;
-import java.io.StringReader;
+import com.google.gson.Gson;
+
+import java.io.*;
 import java.net.URL;
 import java.util.LinkedList;
 import java.util.Scanner;
 
-import com.google.gson.Gson;
-
 /**
  * Kazumi Netease Lyrics Helper v0.3.0
- * 
+ * <p>
+ * 根据网易云音乐分享链接，下载并保存歌词。
+ * ====
  * yuki_ryoko@kotori.moe
+ * github.com/yuki-ryoko/Kazumi-Netease-Lyrics-Helper
  */
 
 public class GetNeteaseLrc {
 
-	public static LinkedList<String> mLrcData = new LinkedList<>();
-	public static LinkedList<String> mChineseLrcData = new LinkedList<>();
+    private static LinkedList<String> originalLrcList = new LinkedList<>();
+    private static LinkedList<String> translationLrcList = new LinkedList<>();
+    private static String finalLrc = "";
 
-	public static void main(String[] paramArrayOfString) {
+    public static void main(String[] args) {
 
-		System.out.println("输入分享地址：");
+        System.out.println("输入分享链接或歌曲 ID:");
 
-		// 获取输入的分享地址
-		getInputUrl();
-	}
+        String shareLink = new Scanner(System.in).next();
+        String songId = getSongId(shareLink);
 
-	// 获取输入的分享地址
-	public static void getInputUrl() {
+        System.out.println("找到歌曲 ID: " + songId);
 
-		Scanner localScanner = new Scanner(System.in);
+        // 获取并处理原歌词
+        lrcProcessor(getOriginalLrc(songId, false), originalLrcList);
 
-		// 获取输入 url
-		getSongId(localScanner.next());
-	}
+        // 获取并处理翻译歌词
+        lrcProcessor(getOriginalLrc(songId, true), translationLrcList);
 
-	// 获取连接中的 id
-	public static void getSongId(String url) {
+        // 组合原歌词与翻译歌词
+        if (translationLrcList.size() > 0) {
 
-		String songId = null;
+            for (int i = 0; i < originalLrcList.size(); i++) {
 
-		try {
-			songId = url.substring(url.indexOf("id=") + 3, url.indexOf("&userid"));
-		} catch (Exception localException) {
-			System.out.println("请输入完整的分享链接\n再见");
-			return;
-		}
+                boolean isFindTransLrc = false;
 
-		// 获取原歌词
-		getLrc(songId);
+                for (int j = 0; j < translationLrcList.size(); j++) {
 
-		// 获取中文歌词
-		getChineseLrc(songId);
+                    // 对比时间戳
+                    String originalLrcTimestamp = originalLrcList.get(i).substring(0, originalLrcList.get(i).indexOf("]") + 1);
+                    String translationLrcTimestamp = translationLrcList.get(j).substring(0, translationLrcList.get(j).indexOf("]") + 1);
 
-		System.out.println("=============================");
-		System.out.println("原歌词长度: " + mLrcData.size());
-		System.out.println("中文歌词长度: " + mChineseLrcData.size());
-		System.out.println("=============================");
+                    if (originalLrcTimestamp.equals(translationLrcTimestamp)) {
+                        finalLrc += (originalLrcList.get(i) + " / " + translationLrcList.get(j).replace(translationLrcTimestamp, "") + "\r\n");
+                        isFindTransLrc = true;
+                    }
+                }
 
-		// for (int i = 0; i < mLrcData.size(); i++) {
-		// try {
-		// finalLrc += mLrcData.get(i) + " / " + mChineseLrcData.get(i) +
-		// "\r\n";
-		// } catch (Exception e) {
-		// finalLrc += mLrcData.get(i) + "\r\n";
-		// }
-		// }
+                if (!isFindTransLrc) {
+                    finalLrc += originalLrcList.get(i) + "\r\n";
+                }
+            }
+        }
 
-		// 没有中文歌词 (翻译歌词)
-		if (null == mChineseLrcData || 0 >= mChineseLrcData.size()) {
-			for (int i = 0; i < mLrcData.size(); i++) {
-				finalLrc += mLrcData.get(i) + "\r\n";
-			}
-		} else {
-			for (int i = 0; i < mLrcData.size(); i++) {
+        else {
+            for (int i = 0; i < originalLrcList.size(); i++) {
+                finalLrc += originalLrcList.get(i) + "\r\n";
+            }
+        }
 
-				boolean isFind = false;
+        // 最终输出
+        try {
+            saveLrcFile(finalLrc);
+        } catch (FileNotFoundException e) {
+            System.out.println("输出文件失败: " + e);
+        }
 
-				for (int j = 0; j < mChineseLrcData.size(); j++) {
 
-					// 对比时间戳
-					if (mLrcData.get(i).substring(0, mLrcData.get(i).indexOf("]") + 1)
-							.equals(mChineseLrcData.get(j).substring(0, mLrcData.get(j).indexOf("]") + 1))
-							&& !mLrcData.get(i).trim().equals("")) {
+    }
 
-						System.out.print(mLrcData.get(i) + " / "
-								+ mChineseLrcData.get(j).replace(
-										mChineseLrcData.get(j).substring(0, mChineseLrcData.get(j).indexOf("]") + 1),
-										"")
-								+ "\r\n");
+    // 获取歌曲 ID
+    private static String getSongId(String shareLink) {
 
-						isFind = true;
-					}
-				}
+        System.out.println("寻找歌曲 ID...");
 
-				if (!isFind) {
-					System.out.print(mLrcData.get(i) + "\r\n");
-				}
-			}
-		}
+        // 移除域名
+        if (shareLink.contains("https")) {
+            shareLink = shareLink.replace("https://music.163.com/#/m/song?id=", "");
+        } else if (shareLink.contains("http")) {
+            shareLink = shareLink.replace("http://music.163.com/#/m/song?id=", "");
+        }
 
-		try {
-			saveLrcFile(finalLrc);
-		} catch (FileNotFoundException e) {
-			System.out.println("输出文件失败: " + e);
-		}
-	}
+        // 移除 userid
+        try {
+            shareLink = shareLink.replace(shareLink.substring(shareLink.indexOf("&userid"), shareLink.length()), "");
+        } catch (Exception ignored) {
+        }
 
-	public static String finalLrc = "";
+        // 简单检测是否是歌曲 ID
+        try {
+            int temp = Integer.parseInt(shareLink);
+        } catch (NumberFormatException e) {
+            System.out.println("\n分享链接或歌曲 ID 输入错误\n再见");
+            return "";
+        }
 
-	// 获取原歌词
-	public static void getLrc(String paramString) {
-		try {
-			URL localURL = new URL("http://music.163.com/api/song/media?id=" + paramString);
-			InputStream localInputStream = localURL.openStream();
-			InputStreamReader localInputStreamReader = new InputStreamReader(localInputStream, "utf-8");
-			BufferedReader localBufferedReader = new BufferedReader(localInputStreamReader);
+        return shareLink;
+    }
 
-			String str = null;
-			while ((str = localBufferedReader.readLine()) != null) {
-				cutHead(str);
-			}
-			localBufferedReader.close();
-			localInputStreamReader.close();
-			localInputStream.close();
-		} catch (Exception localException) {
-			localException.printStackTrace();
-		}
-	}
+    // 获取原歌词
+    private static String getOriginalLrc(String songId, boolean isTranslationLrc) {
 
-	// 处理非歌词数据
-	public static void cutHead(String paramString) throws IOException {
-		GetNeteaseLrc.LrcItem localLrcItem = (GetNeteaseLrc.LrcItem) new Gson().fromJson(paramString,
-				GetNeteaseLrc.LrcItem.class);
-		if (null != localLrcItem.lyric) {
-			readString(localLrcItem.lyric, mLrcData);
-		} else {
-			System.out.println("淦，没歌词");
-			return;
-		}
-	}
+        if (isTranslationLrc) {
+            System.out.println("正在获取翻译歌词...");
+        } else {
+            System.out.println("正在获取原歌词...");
+        }
 
-	// 处理歌词数据并加入数组
-	public static String readString(String pathname, LinkedList<String> mData) throws IOException {
-		BufferedReader reader = new BufferedReader(new StringReader(pathname));
-		StringBuilder sb = new StringBuilder();
+        String temp = null;
 
-		String line = "";
-		while ((line = reader.readLine()) != null) {
-			sb.append(line + "\r\n");
+        try {
+            URL localURL = null;
 
-			// 分隔时间戳与正文内容
-			String[] temp = line.split("]");
+            if (isTranslationLrc) {
+                localURL = new URL("https://music.163.com/api/song/lyric?os=pc&id=" + songId + "&tv=-1");
+            } else {
+                localURL = new URL("http://music.163.com/api/song/media?id=" + songId);
+            }
 
-			// 处理空字符串时间戳
-			if (1 == temp.length && !line.trim().equals("")) {
-				temp = new String[] { temp[0], " " };
-			}
+            InputStream localInputStream = localURL.openStream();
+            InputStreamReader localInputStreamReader = new InputStreamReader(localInputStream, "utf-8");
+            BufferedReader localBufferedReader = new BufferedReader(localInputStreamReader);
 
-			// 将处理完的正文加入到数组
-			for (int j = 0; j < temp.length - 1; j++) {
+            String str = null;
+            while ((str = localBufferedReader.readLine()) != null) {
+                temp = str;
+            }
+            localBufferedReader.close();
+            localInputStreamReader.close();
+            localInputStream.close();
+        } catch (Exception localException) {
+            if (isTranslationLrc) {
+                System.out.println("获取翻译歌词失败: " + localException.toString());
+            } else {
+                System.out.println("获取原歌词失败: " + localException.toString());
+            }
+        }
 
-				if (temp[j].length() >= 0) {
-					mData.add(temp[j] + "]" + temp[temp.length - 1]);
-				}
+        return temp;
+    }
 
-			}
+    // 处理歌词
+    private static void lrcProcessor(String lrc, LinkedList<String> mLrcList) {
 
-			// mData.add(line);
-		}
-		reader.close();
-		return sb.toString();
-	}
+        String[] mLrc = null;
 
-	public static class LrcItem {
-		public String lyric;
-	}
+        // 处理原歌词非歌词数据
+        if (mLrcList == originalLrcList) {
+            OriginalLrcBean originalLrcBean = new Gson().fromJson(lrc, OriginalLrcBean.class);
+            if (null != originalLrcBean.lyric) {
+                System.out.println("获取原歌词成功");
+                mLrc = originalLrcBean.lyric.split("\n");
+            } else {
+                System.out.println("淦，没歌词");
+                return;
+            }
+        }
 
-	public static void getChineseLrc(String paramString) {
-		try {
-			URL localURL = new URL("https://music.163.com/api/song/lyric?os=pc&id=" + paramString + "&tv=-1");
-			InputStream localInputStream = localURL.openStream();
-			InputStreamReader localInputStreamReader = new InputStreamReader(localInputStream, "utf-8");
-			BufferedReader localBufferedReader = new BufferedReader(localInputStreamReader);
+        // 处理翻译歌词非歌词数据
+        else {
+            TranslationLrcBean translationLrcBean = new Gson().fromJson(lrc, TranslationLrcBean.class);
+            if (null != translationLrcBean.tlyric.lyric) {
+                System.out.println("获取翻译歌词成功");
+                mLrc = translationLrcBean.tlyric.lyric.split("\n");
+            } else {
+                System.out.println("淦，没翻译歌词");
+                return;
+            }
+        }
 
-			String str = null;
-			while ((str = localBufferedReader.readLine()) != null) {
-				cutChineseHead(str);
-			}
-			localBufferedReader.close();
-			localInputStreamReader.close();
-			localInputStream.close();
-		} catch (Exception localException) {
-			localException.printStackTrace();
-		}
-	}
+        // 处理歌词数据
+        for (int i = 0; i < mLrc.length; i++) {
 
-	public static void cutChineseHead(String paramString) throws IOException {
-		GetNeteaseLrc.ChineseLrcItem localLrcItem = (GetNeteaseLrc.ChineseLrcItem) new Gson().fromJson(paramString,
-				GetNeteaseLrc.ChineseLrcItem.class);
-		if (null != localLrcItem.tlyric.lyric) {
-			readString(localLrcItem.tlyric.lyric, mChineseLrcData);
-		} else {
-			System.out.println("淦，没中文歌词");
-		}
-	}
+            if (mLrc[i].indexOf("][") >= 0) {
+                String[] temp = mLrc[i].split("]");
+                if (!mLrc[i].substring(mLrc[i].length() - 1, mLrc[i].length()).equals("]")) {
+                    for (int j = 0; j < temp.length - 1; j++) {
+                        mLrcList.add(temp[j] + "]" + temp[temp.length - 1]);
+                    }
+                } else {
+                    for (int j = 0; j < temp.length - 1; j++) {
+                        mLrcList.add(temp[j] + "] ");
+                    }
+                }
+            } else {
+                mLrcList.add(mLrc[i]);
+            }
+        }
+    }
 
-	public static class ChineseLrcItem {
-		public Tlyric tlyric;
+    // 保存最终文件
+    private static void saveLrcFile(String data) throws FileNotFoundException {
+        System.out.println("正在保存文件...");
+        FileOutputStream fs = new FileOutputStream(new File("C:" + File.separator + ".lrc"));
+        PrintStream p = new PrintStream(fs);
+        p.println(data);
+        p.close();
+        System.out.println("歌词文件已输出到: C:\\.lrc");
+    }
 
-		public class Tlyric {
-			public String lyric;
-		}
-	}
+    // 原歌词 JavaBean
+    public class OriginalLrcBean {
+        public String lyric;
+    }
 
-	// 保存最终文件
-	public static void saveLrcFile(String data) throws FileNotFoundException {
-		FileOutputStream fs = new FileOutputStream(new File("C:" + File.separator + ".lrc"));
-		PrintStream p = new PrintStream(fs);
-		p.println(data);
-		p.close();
-		System.out.println("歌词文件已输出到: C:\\.lrc");
-	}
+    // 翻译歌词 JavaBean
+    public class TranslationLrcBean {
+        public Tlyric tlyric;
+
+        public class Tlyric {
+            public String lyric;
+        }
+    }
+
+
 }
